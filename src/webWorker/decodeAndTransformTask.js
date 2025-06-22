@@ -28,21 +28,40 @@ function _handler(data, doneCallback) {
     sopInstanceUID,
     metadata,
     iccProfiles,
+    iccOutputType = "srgb" // "srgb" or "display-p3"
   } = data.data
 
-  _checkImageTypeAndDecode({
-    bitsAllocated,
-    columns,
-    rows,
-    samplesPerPixel,
-    pixelRepresentation,
-    frame,
-  })
-    .then((decodedFrame) => {
-      if (iccProfiles?.length) {
-        // Only instantiate the transformer once and cache it for reuse.
-        if (transformerColor === undefined) {
-          transformerColor = new ColorTransformer(metadata, iccProfiles)
+  _checkImageTypeAndDecode(
+    {
+      bitsAllocated,
+      columns,
+      rows,
+      samplesPerPixel,
+      pixelRepresentation,
+      frame
+    }
+  ).then((decodedFrame) => {
+    if (iccProfiles != null && iccProfiles.length > 0) {
+      // Only instantiate the transformer once and cache it for reuse.
+      if (transformerColor === undefined) {
+        transformerColor = new ColorTransformer(metadata, iccProfiles, iccOutputType)
+      }
+      // Apply ICC color transform
+      transformerColor.transform(
+        sopInstanceUID,
+        decodedFrame
+      ).then((transformedFrame) => {
+        /*
+         * Invoke the callback with our result and pass the frameData in the
+         * transferList to move it to UI thread without making a copy.
+         */
+        doneCallback(
+          { frameData: transformedFrame.buffer },
+          [transformedFrame.buffer]
+        )
+      }).catch(
+        (error) => {
+          throw new Error(`Failed to transform frame: ${error}`)
         }
         // Apply ICC color transform
         transformerColor
